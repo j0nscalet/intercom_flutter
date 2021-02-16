@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intercom_flutter/intercom_flutter.dart';
 
@@ -29,6 +30,13 @@ void main() {
       });
     });
 
+    test('testSendingAPNTokenToIntercom', () {
+      Intercom.sendTokenToIntercom('mock_apn_token');
+      expectMethodCall('sendTokenToIntercom', arguments: {
+        'token': 'mock_apn_token',
+      });
+    });
+
     group('registerIdentifiedUser', () {
       test('with userId', () {
         Intercom.registerIdentifiedUser(userId: 'test');
@@ -47,9 +55,9 @@ void main() {
       test('with userId and email should fail', () {
         expect(
           () => Intercom.registerIdentifiedUser(
-                userId: 'testId',
-                email: 'testEmail',
-              ),
+            userId: 'testId',
+            email: 'testEmail',
+          ),
           throwsArgumentError,
         );
       });
@@ -62,6 +70,14 @@ void main() {
     test('registerUnidentifiedUser', () {
       Intercom.registerUnidentifiedUser();
       expectMethodCall('registerUnidentifiedUser');
+    });
+
+    test('setBottomPadding', () {
+      final padding = 64;
+      Intercom.setBottomPadding(padding);
+      expectMethodCall('setBottomPadding', arguments: {
+        'bottomPadding': padding,
+      });
     });
 
     test('setUserHash', () {
@@ -100,9 +116,10 @@ void main() {
 
     test('displayMessageComposer', () {
       Intercom.displayMessageComposer("message");
-      expectMethodCall('displayMessageComposer', arguments: {
-        "message" : "message"
-      });
+      expectMethodCall(
+        'displayMessageComposer',
+        arguments: {"message": "message"},
+      );
     });
 
     group('setInAppMessagesVisibility', () {
@@ -145,6 +162,7 @@ void main() {
         phone: '+37256123456',
         company: 'Some Company LLC',
         companyId: '2',
+        signedUpAt: 1590949800
       );
       expectMethodCall('updateUser', arguments: {
         'email': 'test@example.com',
@@ -153,6 +171,7 @@ void main() {
         'phone': '+37256123456',
         'company': 'Some Company LLC',
         'companyId': '2',
+        'signedUpAt': 1590949800,
         'customAttributes': null,
       });
     });
@@ -176,6 +195,30 @@ void main() {
         'name': 'TEST',
         'metaData': {'string': 'A string', 'number': 10, 'bool': true},
       });
+    });
+  });
+
+  group('UnreadMessageCount', () {
+    const String channelName = 'maido.io/intercom/unread';
+    const MethodChannel channel = MethodChannel(channelName);
+    final int value = 9;
+
+    setUp(() {
+      channel.setMockMethodCallHandler((MethodCall methodCall) async {
+        ServicesBinding.instance.defaultBinaryMessenger.handlePlatformMessage(
+          channelName,
+          const StandardMethodCodec().encodeSuccessEnvelope(value),
+          (ByteData data) {},
+        );
+      });
+    });
+
+    tearDown(() {
+      channel.setMockMethodCallHandler(null);
+    });
+
+    test('testStream', () async {
+      expect(await Intercom.getUnreadStream().first, value);
     });
   });
 }

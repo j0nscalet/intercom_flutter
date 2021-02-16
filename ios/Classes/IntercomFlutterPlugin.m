@@ -1,6 +1,23 @@
 #import "IntercomFlutterPlugin.h"
-#import "Intercom.h"
+#import <Intercom/Intercom.h>
 #import <UserNotifications/UserNotifications.h>
+
+id unread;
+
+@implementation UnreadStreamHandler
+- (FlutterError*)onListenWithArguments:(id)arguments eventSink:(FlutterEventSink)eventSink {
+    unread = [[NSNotificationCenter defaultCenter] addObserverForName:IntercomUnreadConversationCountDidChangeNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification * _Nonnull note) {
+        NSNumber *myNum = @([Intercom unreadConversationCount]);
+        eventSink(myNum);
+    }];
+  return nil;
+}
+
+- (FlutterError*)onCancelWithArguments:(id)arguments {
+    [[NSNotificationCenter defaultCenter] removeObserver:unread];
+  return nil;
+}
+@end
 
 @implementation IntercomFlutterPlugin
  FlutterMethodChannel *_channel;
@@ -12,11 +29,17 @@
     id instance = [[IntercomFlutterPlugin alloc] initWithChannel:channel];
     [registrar addApplicationDelegate:instance];
     [registrar addMethodCallDelegate:instance channel:channel];
+    FlutterEventChannel* unreadChannel = [FlutterEventChannel eventChannelWithName:@"maido.io/intercom/unread"
+    binaryMessenger:[registrar messenger]];
+    UnreadStreamHandler* unreadStreamHandler =
+        [[UnreadStreamHandler alloc] init];
+    [unreadChannel setStreamHandler:unreadStreamHandler];
+
 }
 
 - (instancetype)initWithChannel:(FlutterMethodChannel *)channel {
     self = [super init];
-    
+
     if (self) {
         _channel = channel;
     }
@@ -33,6 +56,14 @@
     else if([@"registerUnidentifiedUser" isEqualToString:call.method]) {
         [Intercom registerUnidentifiedUser];
         result(@"Registered unidentified user");
+    }
+    else if([@"setBottomPadding" isEqualToString:call.method]) {
+        NSNumber *value = call.arguments[@"bottomPadding"];
+        if(value != (id)[NSNull null] && value != nil) {
+            CGFloat padding = [value doubleValue];
+            [Intercom setBottomPadding:padding];
+            result(@"Set bottom padding");
+        }
     }
     else if([@"setUserHash" isEqualToString:call.method]) {
         NSString *userHash = call.arguments[@"userHash"];
@@ -76,36 +107,7 @@
         result(@"Presented help center");
     }
     else if([@"updateUser" isEqualToString:call.method]) {
-        ICMUserAttributes *attributes = [ICMUserAttributes new];
-        NSString *email = call.arguments[@"email"];
-        if(email != (id)[NSNull null]) {
-            attributes.email = email;
-        }
-        NSString *name = call.arguments[@"name"];
-        if(name != (id)[NSNull null]) {
-            attributes.name = name;
-        }
-        NSString *phone = call.arguments[@"phone"];
-        if(phone != (id)[NSNull null]) {
-            attributes.phone = phone;
-        }
-        NSString *userId = call.arguments[@"userId"];
-        if(userId != (id)[NSNull null]) {
-            attributes.userId = userId;
-        }
-        NSString *companyName = call.arguments[@"company"];
-        NSString *companyId = call.arguments[@"companyId"];
-        if(companyName != (id)[NSNull null] && companyId != (id)[NSNull null]) {
-            ICMCompany *company = [ICMCompany new];
-            company.name = companyName;
-            company.companyId = companyId;
-            attributes.companies = @[company];
-        }
-        NSDictionary *customAttributes = call.arguments[@"customAttributes"];
-        if(customAttributes != (id)[NSNull null]) {
-            attributes.customAttributes = customAttributes;
-        }
-        [Intercom updateUser:attributes];
+        [Intercom updateUser:[self getAttributes:call]];
         result(@"Updated user");
     }
     else if([@"logout" isEqualToString:call.method]) {
@@ -130,6 +132,13 @@
     else if([@"displayMessageComposer" isEqualToString:call.method]) {
         NSString *message = call.arguments[@"message"];
         [Intercom presentMessageComposer:message];
+    } else if([@"sendTokenToIntercom" isEqualToString:call.method]){
+        NSString *token = call.arguments[@"token"];
+        if(token != (id)[NSNull null] && token != nil) {
+            NSData* encodedToken=[token dataUsingEncoding:NSUTF8StringEncoding];
+            [Intercom setDeviceToken:encodedToken];
+            result(@"Token set");
+        }
     }
     else if([@"sendTokenToIntercom" isEqualToString:call.method]) {
         NSString *token = call.arguments[@"token"];
@@ -160,6 +169,7 @@
         result(FlutterMethodNotImplemented);
     }
 }
+
 
 // Convert token to string
 // Source: https://stackoverflow.com/a/16411517/1123085
@@ -234,5 +244,45 @@
       }
 }
 #endif
+
+
+- (ICMUserAttributes *) getAttributes:(FlutterMethodCall *)call {
+    ICMUserAttributes *attributes = [ICMUserAttributes new];
+    NSString *email = call.arguments[@"email"];
+    if(email != (id)[NSNull null]) {
+        attributes.email = email;
+    }
+    NSString *name = call.arguments[@"name"];
+    if(name != (id)[NSNull null]) {
+        attributes.name = name;
+    }
+    NSString *phone = call.arguments[@"phone"];
+    if(phone != (id)[NSNull null]) {
+        attributes.phone = phone;
+    }
+    NSString *userId = call.arguments[@"userId"];
+    if(userId != (id)[NSNull null]) {
+        attributes.userId = userId;
+    }
+    NSString *companyName = call.arguments[@"company"];
+    NSString *companyId = call.arguments[@"companyId"];
+    if(companyName != (id)[NSNull null] && companyId != (id)[NSNull null]) {
+        ICMCompany *company = [ICMCompany new];
+        company.name = companyName;
+        company.companyId = companyId;
+        attributes.companies = @[company];
+    }
+    NSDictionary *customAttributes = call.arguments[@"customAttributes"];
+    if(customAttributes != (id)[NSNull null]) {
+        attributes.customAttributes = customAttributes;
+    }
+    
+    NSNumber *signedUpAt = call.arguments[@"signedUpAt"];
+    if(signedUpAt != (id)[NSNull null]) {
+        attributes.signedUpAt = [NSDate dateWithTimeIntervalSince1970: signedUpAt.doubleValue];
+    }
+    
+    return attributes;
+}
 
 @end
